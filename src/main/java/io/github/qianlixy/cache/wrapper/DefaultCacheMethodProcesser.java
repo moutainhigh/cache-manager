@@ -31,6 +31,8 @@ public class DefaultCacheMethodProcesser implements CacheMethodProcesser {
 	private CacheAdapter cacheAdapter;
 	private int cacheTime;
 	
+	private String fullMethodName;
+	
 	public DefaultCacheMethodProcesser(ProceedingJoinPoint joinPoint, 
 			CacheContext cacheContext) throws IOException {
 		this.joinPoint = joinPoint;
@@ -38,6 +40,7 @@ public class DefaultCacheMethodProcesser implements CacheMethodProcesser {
 		this.cacheAdapter = ApplicationContext.getCacheAdaperFactory().buildCacheAdapter();
 		this.cacheTime = ApplicationContext.getDefaultCacheTime();
 		this.lastThread = Thread.currentThread();
+		this.fullMethodName = joinPoint.getSignature().toLongString();
 	}
 
 	@Override
@@ -52,7 +55,6 @@ public class DefaultCacheMethodProcesser implements CacheMethodProcesser {
 	}
 	
 	@Override
-	//TODO 将缓存数据保存在当前线程一份，防止多次向缓存客户端获取缓存
 	public Object getCache() throws CacheOutOfDateException, CacheNotExistException {
 		//获取缓存
 		Object cache = cacheAdapter.get(cacheContext.getDynamicUniqueMark());
@@ -109,22 +111,35 @@ public class DefaultCacheMethodProcesser implements CacheMethodProcesser {
 	
 	@Override
 	public String getFullMethodName() {
-		return joinPoint.getSignature().toLongString();
+		return fullMethodName;
 	}
 
 	@Override
 	public Object doProcess() throws ExecuteSourceMethodException {
+		//源数据为空或者新线程中执行源方法，获取源数据
 		if(null == sourceData || lastThread != Thread.currentThread()) {
-			//源数据为空或者新线程中执行源方法，获取源数据
-			LOGGER.debug("Start execute source method [{}]", getFullMethodName());
-			try {
-				sourceData = wrap(joinPoint.proceed());
-				lastThread = Thread.currentThread();
-			} catch (Throwable e) {
-				throw new ExecuteSourceMethodException(e);
+			//同一查询条件锁，只允许一个线程执行源方法，其余线程等源方法执行完毕后拿到返回值直接返回
+			if(cacheContext.isQuery()) {
+				synchronized (fullMethodName.intern()) {
+					if(null == sourceData) {
+						callSourceMethod();
+					}
+				}
+			} else {
+				callSourceMethod();
 			}
 		}
 		return unwrap(sourceData);
+	}
+
+	private void callSourceMethod() throws ExecuteSourceMethodException {
+		LOGGER.debug("Start execute source method [{}]", getFullMethodName());
+		try {
+			sourceData = wrap(joinPoint.proceed());
+			lastThread = Thread.currentThread();
+		} catch (Throwable e) {
+			throw new ExecuteSourceMethodException(e);
+		}
 	}
 
 	@Override

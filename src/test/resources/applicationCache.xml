@@ -33,9 +33,9 @@
 			<bean class="io.github.qianlixy.cache.CacheConfig">
 				<property name="dataSource" ref="dataSource"></property>
 				<property name="cacheClient" ref="memcachedClient"></property>
-				<property name="filterConfigs">
-					<list><ref bean="methodMatchFilterConfig"></ref></list>
-				</property>
+<!-- 				<property name="filterConfigs"> -->
+<!-- 					<list><ref bean="methodMatchFilterConfig"></ref></list> -->
+<!-- 				</property> -->
 			</bean>
 		</property>
 	</bean>
